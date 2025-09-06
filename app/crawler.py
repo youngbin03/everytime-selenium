@@ -144,15 +144,22 @@ def scrape_timetable(url):
                 return result;
             }
             
-            result.debug.push('');
-            result.debug.push('=== 본문 분석 ===');
-            
-            // th(시간열)와 td(요일열) 분리
-            var bodyTh = bodyRow.querySelector('th');
-            var bodyTds = bodyRow.querySelectorAll('td');
-            
-            result.debug.push('본문 TH: ' + (bodyTh ? '시간열 존재' : '없음'));
-            result.debug.push('본문 TD 개수: ' + bodyTds.length);
+            // th(시간열)와 td(요일열) 분리 - bodyRow가 있을 때만
+            var bodyTds = [];
+            if (bodyRow) {
+                result.debug.push('');
+                result.debug.push('=== 본문 분석 ===');
+                
+                var bodyTh = bodyRow.querySelector('th');
+                bodyTds = bodyRow.querySelectorAll('td');
+                
+                result.debug.push('본문 TH: ' + (bodyTh ? '시간열 존재' : '없음'));
+                result.debug.push('본문 TD 개수: ' + bodyTds.length);
+            } else {
+                // bodyRow가 없으면 직접 td 찾기
+                bodyTds = document.querySelectorAll('table.tablebody td, .tablebody td');
+                result.debug.push('직접 찾은 TD 개수: ' + bodyTds.length);
+            }
             result.debug.push('');
             result.debug.push('=== TD별 과목 정보 ===');
             
