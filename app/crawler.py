@@ -68,7 +68,7 @@ def scrape_timetable(url):
         driver.execute_script("return document.readyState")
         time.sleep(5)
         
-        # JavaScript 코드 - BASE_HOUR 계산 수정
+        # JavaScript 코드 - 시간 계산 로직 완전 수정
         js_script = """
         function extractTimetable() {
             var result = {
@@ -77,8 +77,8 @@ def scrape_timetable(url):
                 debug: []
             };
             
-            // BASE_HOUR 계산 - 정수로 반올림!
-            var BASE_HOUR = 9;  // 기본값
+            // margin-top 값 확인
+            var marginValue = 0;
             var tableBody = document.querySelector('table.tablebody');
             if (tableBody) {
                 var style = window.getComputedStyle(tableBody);
@@ -86,15 +86,9 @@ def scrape_timetable(url):
                 result.debug.push('=== margin-top: ' + marginTop + ' ===');
                 
                 if (marginTop && marginTop.indexOf('px') > -1) {
-                    var marginValue = parseInt(marginTop.replace('px', '')) || 0;
-                    if (marginValue < 0) {
-                        // Math.round로 반올림하여 정수로 만들기
-                        BASE_HOUR = Math.round(Math.abs(marginValue) / 60);
-                    }
+                    marginValue = parseInt(marginTop.replace('px', '')) || 0;
                 }
             }
-            
-            result.debug.push('=== 계산된 BASE_HOUR: ' + BASE_HOUR + '시 ===');
             
             // 헤더 분석
             var headerRow = document.querySelector('table.tablehead tr');
@@ -168,7 +162,7 @@ def scrape_timetable(url):
             }
             
             result.debug.push('');
-            result.debug.push('=== 과목 시간 계산 (60px = 1시간, BASE_HOUR = ' + BASE_HOUR + ') ===');
+            result.debug.push('=== 과목 시간 계산 (60px = 1시간) ===');
             
             // 과목 추출 - 60px = 1시간 기준
             for (var tdIndex = 0; tdIndex < bodyTds.length; tdIndex++) {
@@ -222,29 +216,39 @@ def scrape_timetable(url):
                         var span = subj.querySelector('p span');
                         if (span) location = span.textContent.trim();
                         
-                        // 시간 계산 - 60px = 1시간 기준 (1px 보정)
-                        var pixelsPerHour = 60;
-                        var pixelsPerMinute = 1;  // 60px / 60분 = 1px per minute
+                        // *** 수정된 시간 계산 로직 ***
+                        // margin-top이 음수인 경우 실제 위치 보정
+                        var actualPosition = top;
+                        if (marginValue < 0) {
+                            // margin-top: -542px는 542px만큼 위로 올라간 것
+                            // 실제 위치 = top + |marginValue|
+                            actualPosition = top + Math.abs(marginValue);
+                        }
                         
-                        // 1px 보정 (시간표 UI 특성상 경계선 1px 제외)
+                        // 60px = 1시간 = 60분
+                        var pixelsPerHour = 60;
+                        
+                        // 시작 시간 계산 (분 단위)
+                        var startTotalMinutes = actualPosition;  // 1px = 1분
+                        var startHour = Math.floor(startTotalMinutes / 60);
+                        var startMin = startTotalMinutes % 60;
+                        
+                        // 종료 시간 계산 (1px 보정)
                         var adjustedHeight = height - 1;
                         if (adjustedHeight < 0) adjustedHeight = 0;
                         
-                        // 시작 시간 계산 (BASE_HOUR 적용)
-                        var startTotalMinutes = Math.round(top / pixelsPerMinute);
-                        var startHour = BASE_HOUR + Math.floor(startTotalMinutes / 60);
-                        var startMin = startTotalMinutes % 60;
-                        
-                        // 종료 시간 계산 (BASE_HOUR 적용, 보정된 height 사용)
-                        var endTotalMinutes = Math.round((top + adjustedHeight) / pixelsPerMinute);
-                        var endHour = BASE_HOUR + Math.floor(endTotalMinutes / 60);
+                        var endTotalMinutes = startTotalMinutes + adjustedHeight;
+                        var endHour = Math.floor(endTotalMinutes / 60);
                         var endMin = endTotalMinutes % 60;
                         
-                        var startTimeStr = (startHour < 10 ? '0' : '') + startHour + ':' + (startMin < 10 ? '0' : '') + startMin;
-                        var endTimeStr = (endHour < 10 ? '0' : '') + endHour + ':' + (endMin < 10 ? '0' : '') + endMin;
+                        // 시간 문자열 생성
+                        var startTimeStr = (startHour < 10 ? '0' : '') + startHour + ':' + 
+                                          (startMin < 10 ? '0' : '') + startMin;
+                        var endTimeStr = (endHour < 10 ? '0' : '') + endHour + ':' + 
+                                        (endMin < 10 ? '0' : '') + endMin;
                         
-                        // 수업 시간 계산 (보정된 값 사용)
-                        var durationMin = Math.round(adjustedHeight / pixelsPerMinute);
+                        // 수업 시간 계산
+                        var durationMin = adjustedHeight;
                         var durationHour = Math.floor(durationMin / 60);
                         var durationMinRem = durationMin % 60;
                         var durationStr = '';
@@ -258,10 +262,10 @@ def scrape_timetable(url):
                         }
                         
                         result.debug.push(dayName + '요일 ' + name);
-                        result.debug.push('  위치: top=' + top + 'px -> ' + startTimeStr);
-                        result.debug.push('  원본 height=' + height + 'px, 보정 후=' + adjustedHeight + 'px');
-                        result.debug.push('  수업시간: ' + durationStr);
+                        result.debug.push('  top=' + top + 'px, actualPosition=' + actualPosition + 'px');
+                        result.debug.push('  height=' + height + 'px, 보정 후=' + adjustedHeight + 'px');
                         result.debug.push('  시간: ' + startTimeStr + ' ~ ' + endTimeStr);
+                        result.debug.push('  수업시간: ' + durationStr);
                         result.debug.push('');
                         
                         result.subjects.push({
@@ -271,9 +275,6 @@ def scrape_timetable(url):
                             day: dayName,
                             startTime: startTimeStr,
                             endTime: endTimeStr,
-                            top: top,
-                            height: height,
-                            tdIndex: tdIndex,
                             duration: durationStr
                         });
                     }
@@ -301,7 +302,6 @@ def scrape_timetable(url):
                         day: '미정',
                         startTime: '미정',
                         endTime: '미정',
-                        nontime: true,
                         duration: '미정'
                     });
                 }
@@ -328,13 +328,6 @@ def scrape_timetable(url):
         # 데이터 처리
         if result and result.get('subjects'):
             subjects = result['subjects']
-            
-            # 디버깅용 속성 제거
-            for subj in subjects:
-                subj.pop('top', None)
-                subj.pop('height', None)
-                subj.pop('tdIndex', None)
-                subj.pop('nontime', None)
             
             # 요일 순서대로 정렬
             day_order = {'월': 1, '화': 2, '수': 3, '목': 4, '금': 5, '토': 6, '일': 7, '미정': 8}
