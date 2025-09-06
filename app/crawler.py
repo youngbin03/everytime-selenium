@@ -53,7 +53,7 @@ def scrape_timetable(url):
         
         time.sleep(5)
         
-        # 기존 JavaScript 코드 (전체)
+        # JavaScript 코드 - 동적으로 기준 시간 계산
         js_script = """
         function extractTimetable() {
             var result = {
@@ -61,6 +61,49 @@ def scrape_timetable(url):
                 daysMap: [],
                 debug: []
             };
+            
+            // 기준 시간 계산을 위한 margin-top 확인
+            var BASE_HOUR = 0;  // 기본값
+            var tableBody = document.querySelector('table.tablebody');
+            if (tableBody) {
+                var style = window.getComputedStyle(tableBody);
+                var marginTop = style.marginTop;
+                result.debug.push('=== margin-top: ' + marginTop + ' ===');
+                
+                // margin-top에서 px 값 추출
+                if (marginTop && marginTop.indexOf('px') > -1) {
+                    var marginValue = parseInt(marginTop.replace('px', '')) || 0;
+                    // margin-top이 음수면 그만큼 시간이 앞당겨짐
+                    // 60px = 1시간, margin-top: -540px = 9시간 앞당김 = 9시 시작
+                    if (marginValue < 0) {
+                        BASE_HOUR = Math.abs(marginValue) / 60;
+                    }
+                }
+            }
+            
+            // BASE_HOUR가 여전히 0이면 시간표에서 첫 과목의 위치로 추정
+            if (BASE_HOUR === 0) {
+                // 첫 번째 시간 라벨 찾기
+                var timeLabels = document.querySelectorAll('table.tablebody th .hours span');
+                if (timeLabels && timeLabels.length > 0) {
+                    var firstTimeText = timeLabels[0].textContent.trim();
+                    if (firstTimeText) {
+                        var match = firstTimeText.match(/^(\\d+)/);
+                        if (match) {
+                            BASE_HOUR = parseInt(match[1]);
+                            result.debug.push('첫 시간 라벨에서 BASE_HOUR 추출: ' + BASE_HOUR);
+                        }
+                    }
+                }
+                
+                // 그래도 0이면 기본값 9시 사용
+                if (BASE_HOUR === 0) {
+                    BASE_HOUR = 9;
+                    result.debug.push('기본값 BASE_HOUR 사용: 9');
+                }
+            }
+            
+            result.debug.push('=== 계산된 BASE_HOUR: ' + BASE_HOUR + '시 ===');
             
             // 헤더 분석
             var headerRow = document.querySelector('table.tablehead tr');
@@ -110,6 +153,31 @@ def scrape_timetable(url):
             
             result.debug.push('본문 TH: ' + (bodyTh ? '시간열 존재' : '없음'));
             result.debug.push('본문 TD 개수: ' + bodyTds.length);
+            result.debug.push('');
+            result.debug.push('=== TD별 과목 정보 ===');
+            
+            // 각 TD 내용 분석
+            for (var i = 0; i < bodyTds.length; i++) {
+                var td = bodyTds[i];
+                var subjectCount = td.querySelectorAll('div.subject').length;
+                
+                // TD 인덱스가 곧 요일 인덱스
+                var dayName = (i < result.daysMap.length) ? result.daysMap[i] : '?';
+                
+                if (subjectCount > 0) {
+                    result.debug.push('TD[' + i + '] (' + dayName + '요일): ' + subjectCount + '개 과목');
+                    var subjs = td.querySelectorAll('div.subject');
+                    for (var j = 0; j < subjs.length; j++) {
+                        var subj = subjs[j];
+                        var name = subj.querySelector('h3') ? subj.querySelector('h3').textContent.trim() : '?';
+                        var style = subj.getAttribute('style') || '';
+                        result.debug.push('  -> ' + name + ': ' + style);
+                    }
+                }
+            }
+            
+            result.debug.push('');
+            result.debug.push('=== 과목 시간 계산 (60px = 1시간, BASE_HOUR = ' + BASE_HOUR + ') ===');
             
             // 과목 추출 - 60px = 1시간 기준
             for (var tdIndex = 0; tdIndex < bodyTds.length; tdIndex++) {
@@ -171,14 +239,14 @@ def scrape_timetable(url):
                         var adjustedHeight = height - 1;
                         if (adjustedHeight < 0) adjustedHeight = 0;
                         
-                        // 시작 시간 계산 (1분 단위)
+                        // 시작 시간 계산 (BASE_HOUR 기준)
                         var startTotalMinutes = Math.round(top / pixelsPerMinute);
-                        var startHour = Math.floor(startTotalMinutes / 60);
+                        var startHour = BASE_HOUR + Math.floor(startTotalMinutes / 60);
                         var startMin = startTotalMinutes % 60;
                         
-                        // 종료 시간 계산 (1분 단위, 보정된 height 사용)
+                        // 종료 시간 계산 (BASE_HOUR 기준, 보정된 height 사용)
                         var endTotalMinutes = Math.round((top + adjustedHeight) / pixelsPerMinute);
-                        var endHour = Math.floor(endTotalMinutes / 60);
+                        var endHour = BASE_HOUR + Math.floor(endTotalMinutes / 60);
                         var endMin = endTotalMinutes % 60;
                         
                         var startTimeStr = (startHour < 10 ? '0' : '') + startHour + ':' + (startMin < 10 ? '0' : '') + startMin;
@@ -198,6 +266,13 @@ def scrape_timetable(url):
                             durationStr = durationMinRem + '분';
                         }
                         
+                        result.debug.push(dayName + '요일 ' + name);
+                        result.debug.push('  위치: top=' + top + 'px -> ' + startTimeStr);
+                        result.debug.push('  원본 height=' + height + 'px, 보정 후=' + adjustedHeight + 'px');
+                        result.debug.push('  수업시간: ' + durationStr);
+                        result.debug.push('  시간: ' + startTimeStr + ' ~ ' + endTimeStr);
+                        result.debug.push('');
+                        
                         result.subjects.push({
                             name: name,
                             professor: professor,
@@ -205,7 +280,10 @@ def scrape_timetable(url):
                             day: dayName,
                             startTime: startTimeStr,
                             endTime: endTimeStr,
-                            duration: durationStr
+                            duration: durationStr,
+                            top: top,
+                            height: height,
+                            tdIndex: tdIndex
                         });
                     }
                 }
@@ -232,7 +310,8 @@ def scrape_timetable(url):
                         day: '미정',
                         startTime: '미정',
                         endTime: '미정',
-                        duration: '미정'
+                        duration: '미정',
+                        nontime: true
                     });
                 }
             }
@@ -246,9 +325,23 @@ def scrape_timetable(url):
         # JavaScript 실행
         result = driver.execute_script(js_script)
         
+        # 디버그 정보 출력
+        if result and result.get('debug'):
+            print("\n🔍 디버깅 정보:")
+            for info in result['debug']:
+                print(f"   {info}")
+            print()
+        
         # 데이터 처리
         if result and result.get('subjects'):
             subjects = result['subjects']
+            
+            # top, height, tdIndex 같은 디버그 정보 제거
+            for subj in subjects:
+                subj.pop('top', None)
+                subj.pop('height', None)
+                subj.pop('tdIndex', None)
+                subj.pop('nontime', None)
             
             # 요일 순서대로 정렬
             day_order = {'월': 1, '화': 2, '수': 3, '목': 4, '금': 5, '토': 6, '일': 7, '미정': 8}
@@ -284,3 +377,30 @@ def scrape_timetable(url):
                 print("브라우저 종료")
             except:
                 pass
+
+# 테스트용 메인 함수 (선택사항)
+if __name__ == "__main__":
+    url = "https://everytime.kr/@0HpGBZKue79CEavond7E"
+    result = scrape_timetable(url)
+    
+    if result['success']:
+        print("\n✅ 스크래핑 성공!")
+        print(f"총 {result['total']}개 과목\n")
+        
+        current_day = None
+        for course in result['data']:
+            if course['day'] != current_day:
+                current_day = course['day']
+                print(f"\n[{current_day}요일]" if current_day != '미정' else "\n[시간 미정]")
+            
+            print(f"📚 {course['name']}")
+            if course['professor']:
+                print(f"   교수: {course['professor']}")
+            if course['startTime'] != '미정':
+                print(f"   시간: {course['startTime']} ~ {course['endTime']}")
+            if course['location']:
+                print(f"   장소: {course['location']}")
+            if course.get('duration'):
+                print(f"   수업시간: {course['duration']}")
+    else:
+        print(f"\n❌ 스크래핑 실패: {result['error']}")
