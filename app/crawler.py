@@ -1,11 +1,13 @@
 import time
 import json
 import os
+import random
 from datetime import datetime
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
 
 def create_driver():
     """Docker 환경에 최적화된 Chrome 드라이버 생성"""
@@ -16,21 +18,26 @@ def create_driver():
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-gpu')
-    options.add_argument('--disable-features=VizDisplayCompositor')
     options.add_argument('--disable-setuid-sandbox')
     
-    # 메모리 최적화
-    options.add_argument('--memory-pressure-off')
-    options.add_argument('--max_old_space_size=4096')
-    
-    # 성능 옵션
+    # headless 감지 우회
     options.add_argument('--disable-blink-features=AutomationControlled')
-    options.add_argument('--disable-web-security')
-    options.add_argument('--disable-extensions')
+    options.add_argument('--start-maximized')
+    options.add_argument('--window-size=1920,1080')
     
-    options.add_argument('user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+    # User-Agent 설정 (2번 코드와 동일)
+    options.add_argument('user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
     
-    driver = uc.Chrome(options=options, version_main=None)
+    # 언어 설정 (2번 코드와 동일)
+    options.add_experimental_option('prefs', {
+        'intl.accept_languages': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7'
+    })
+    
+    try:
+        driver = uc.Chrome(options=options)
+    except:
+        driver = uc.Chrome(options=options, version_main=None)
+    
     driver.set_page_load_timeout(30)
     
     return driver
@@ -40,20 +47,22 @@ def scrape_timetable(url):
     driver = None
     try:
         driver = create_driver()
+        
+        # 2번 코드와 동일한 타이밍
+        time.sleep(random.uniform(2, 4))
+        
         print(f"페이지 접속: {url}")
         driver.get(url)
         
-        # 페이지 로딩 대기
-        try:
-            WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "table.tablebody, div.tablebody"))
-            )
-        except:
-            pass
+        # 2번 코드와 동일한 대기 시간
+        print("페이지 로딩 중...")
+        time.sleep(random.uniform(8, 12))
         
+        # JavaScript 실행 완료 대기
+        driver.execute_script("return document.readyState")
         time.sleep(5)
         
-        # JavaScript 코드 - BASE_HOUR 계산 추가
+        # 2번 코드의 JavaScript (BASE_HOUR 계산 추가)
         js_script = """
         function extractTimetable() {
             var result = {
@@ -62,7 +71,7 @@ def scrape_timetable(url):
                 debug: []
             };
             
-            // BASE_HOUR 계산 - 시간표 시작 시간 파악
+            // BASE_HOUR 계산
             var BASE_HOUR = 9;  // 기본값
             var tableBody = document.querySelector('table.tablebody');
             if (tableBody) {
@@ -70,18 +79,13 @@ def scrape_timetable(url):
                 var marginTop = style.marginTop;
                 result.debug.push('=== margin-top: ' + marginTop + ' ===');
                 
-                // margin-top에서 px 값 추출
                 if (marginTop && marginTop.indexOf('px') > -1) {
                     var marginValue = parseInt(marginTop.replace('px', '')) || 0;
-                    // margin-top이 음수면 그만큼 시간이 앞당겨짐
-                    // 60px = 1시간, margin-top: -540px = 9시간 앞당김 = 9시 시작
                     if (marginValue < 0) {
                         BASE_HOUR = Math.abs(marginValue) / 60;
                     }
                 }
             }
-            
-            result.debug.push('=== 계산된 BASE_HOUR: ' + BASE_HOUR + '시 ===');
             
             // 헤더 분석
             var headerRow = document.querySelector('table.tablehead tr');
@@ -131,6 +135,31 @@ def scrape_timetable(url):
             
             result.debug.push('본문 TH: ' + (bodyTh ? '시간열 존재' : '없음'));
             result.debug.push('본문 TD 개수: ' + bodyTds.length);
+            result.debug.push('');
+            result.debug.push('=== TD별 과목 정보 ===');
+            
+            // 각 TD 내용 분석
+            for (var i = 0; i < bodyTds.length; i++) {
+                var td = bodyTds[i];
+                var subjectCount = td.querySelectorAll('div.subject').length;
+                
+                // TD 인덱스가 곧 요일 인덱스
+                var dayName = (i < result.daysMap.length) ? result.daysMap[i] : '?';
+                
+                if (subjectCount > 0) {
+                    result.debug.push('TD[' + i + '] (' + dayName + '요일): ' + subjectCount + '개 과목');
+                    var subjs = td.querySelectorAll('div.subject');
+                    for (var j = 0; j < subjs.length; j++) {
+                        var subj = subjs[j];
+                        var name = subj.querySelector('h3') ? subj.querySelector('h3').textContent.trim() : '?';
+                        var style = subj.getAttribute('style') || '';
+                        result.debug.push('  -> ' + name + ': ' + style);
+                    }
+                }
+            }
+            
+            result.debug.push('');
+            result.debug.push('=== 과목 시간 계산 (60px = 1시간) ===');
             
             // 과목 추출 - 60px = 1시간 기준
             for (var tdIndex = 0; tdIndex < bodyTds.length; tdIndex++) {
@@ -219,6 +248,13 @@ def scrape_timetable(url):
                             durationStr = durationMinRem + '분';
                         }
                         
+                        result.debug.push(dayName + '요일 ' + name);
+                        result.debug.push('  위치: top=' + top + 'px -> ' + startTimeStr);
+                        result.debug.push('  원본 height=' + height + 'px, 보정 후=' + adjustedHeight + 'px');
+                        result.debug.push('  수업시간: ' + durationStr);
+                        result.debug.push('  시간: ' + startTimeStr + ' ~ ' + endTimeStr);
+                        result.debug.push('');
+                        
                         result.subjects.push({
                             name: name,
                             professor: professor,
@@ -226,6 +262,9 @@ def scrape_timetable(url):
                             day: dayName,
                             startTime: startTimeStr,
                             endTime: endTimeStr,
+                            top: top,
+                            height: height,
+                            tdIndex: tdIndex,
                             duration: durationStr
                         });
                     }
@@ -253,6 +292,7 @@ def scrape_timetable(url):
                         day: '미정',
                         startTime: '미정',
                         endTime: '미정',
+                        nontime: true,
                         duration: '미정'
                     });
                 }
@@ -264,19 +304,28 @@ def scrape_timetable(url):
         return extractTimetable();
         """
         
+        print("\n--- 데이터 추출 중 ---\n")
+        
         # JavaScript 실행
         result = driver.execute_script(js_script)
         
-        # 디버그 정보 출력 (옵션)
+        # 디버깅 정보 출력
         if result and result.get('debug'):
-            print("\n디버깅 정보:")
+            print("\n🔍 디버깅 정보:")
             for info in result['debug']:
-                print(f"  {info}")
+                print(f"   {info}")
             print()
         
         # 데이터 처리
         if result and result.get('subjects'):
             subjects = result['subjects']
+            
+            # 디버깅용 속성 제거
+            for subj in subjects:
+                subj.pop('top', None)
+                subj.pop('height', None)
+                subj.pop('tdIndex', None)
+                subj.pop('nontime', None)
             
             # 요일 순서대로 정렬
             day_order = {'월': 1, '화': 2, '수': 3, '목': 4, '금': 5, '토': 6, '일': 7, '미정': 8}
@@ -285,6 +334,8 @@ def scrape_timetable(url):
                 x['startTime'] if x['startTime'] != '미정' else '99:99'
             ))
             
+            print(f"✅ {len(subjects)}개 과목 발견\n")
+            
             return {
                 'success': True,
                 'data': subjects,
@@ -292,6 +343,19 @@ def scrape_timetable(url):
                 'total': len(subjects)
             }
         else:
+            print("❌ 과목 데이터를 찾을 수 없습니다.")
+            
+            # 디버깅을 위해 스크린샷과 HTML 저장
+            try:
+                driver.save_screenshot("/app/debug_screenshot.png")
+                print("📸 디버깅 스크린샷 저장: /app/debug_screenshot.png")
+                
+                with open('/app/debug_page.html', 'w', encoding='utf-8') as f:
+                    f.write(driver.page_source)
+                print("📄 디버깅 HTML 저장: /app/debug_page.html")
+            except Exception as e:
+                print(f"디버깅 파일 저장 실패: {e}")
+            
             return {
                 'success': False,
                 'error': '시간표 데이터를 찾을 수 없습니다',
@@ -299,7 +363,10 @@ def scrape_timetable(url):
             }
         
     except Exception as e:
-        print(f"오류 발생: {str(e)}")
+        print(f"❌ 오류 발생: {e}")
+        import traceback
+        traceback.print_exc()
+        
         return {
             'success': False,
             'error': str(e),
