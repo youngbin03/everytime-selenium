@@ -8,7 +8,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
-from pyvirtualdisplay import Display  # 추가
+from pyvirtualdisplay import Display
 
 def create_driver():
     """Docker 환경에 최적화된 Chrome 드라이버 생성"""
@@ -19,8 +19,8 @@ def create_driver():
     
     options = uc.ChromeOptions()
     
-    # headless 모드 제거! (중요)
-    # options.add_argument('--headless=new')  # 이 줄 삭제
+    # headless 모드 제거! (Xvfb 사용)
+    # options.add_argument('--headless=new')
     
     # Docker 환경 필수 옵션
     options.add_argument('--no-sandbox')
@@ -48,30 +48,27 @@ def create_driver():
     
     driver.set_page_load_timeout(30)
     
-    return driver, display  # display도 반환
+    return driver, display
 
 def scrape_timetable(url):
     """시간표 스크래핑 함수"""
     driver = None
     display = None
     try:
-        driver, display = create_driver() 
+        driver, display = create_driver()
         
-        # 2번 코드와 동일한 타이밍
         time.sleep(random.uniform(2, 4))
         
         print(f"페이지 접속: {url}")
         driver.get(url)
         
-        # 2번 코드와 동일한 대기 시간
         print("페이지 로딩 중...")
         time.sleep(random.uniform(8, 12))
         
-        # JavaScript 실행 완료 대기
         driver.execute_script("return document.readyState")
         time.sleep(5)
         
-        # 2번 코드의 JavaScript (BASE_HOUR 계산 추가)
+        # JavaScript 코드 - BASE_HOUR 계산 수정
         js_script = """
         function extractTimetable() {
             var result = {
@@ -80,7 +77,7 @@ def scrape_timetable(url):
                 debug: []
             };
             
-            // BASE_HOUR 계산
+            // BASE_HOUR 계산 - 정수로 반올림!
             var BASE_HOUR = 9;  // 기본값
             var tableBody = document.querySelector('table.tablebody');
             if (tableBody) {
@@ -91,10 +88,13 @@ def scrape_timetable(url):
                 if (marginTop && marginTop.indexOf('px') > -1) {
                     var marginValue = parseInt(marginTop.replace('px', '')) || 0;
                     if (marginValue < 0) {
-                        BASE_HOUR = Math.abs(marginValue) / 60;
+                        // Math.round로 반올림하여 정수로 만들기
+                        BASE_HOUR = Math.round(Math.abs(marginValue) / 60);
                     }
                 }
             }
+            
+            result.debug.push('=== 계산된 BASE_HOUR: ' + BASE_HOUR + '시 ===');
             
             // 헤더 분석
             var headerRow = document.querySelector('table.tablehead tr');
@@ -168,7 +168,7 @@ def scrape_timetable(url):
             }
             
             result.debug.push('');
-            result.debug.push('=== 과목 시간 계산 (60px = 1시간) ===');
+            result.debug.push('=== 과목 시간 계산 (60px = 1시간, BASE_HOUR = ' + BASE_HOUR + ') ===');
             
             // 과목 추출 - 60px = 1시간 기준
             for (var tdIndex = 0; tdIndex < bodyTds.length; tdIndex++) {
@@ -390,6 +390,7 @@ def scrape_timetable(url):
                 pass
         if display:
             try:
-                display.stop()  # 가상 디스플레이 종료
+                display.stop()
+                print("가상 디스플레이 종료")
             except:
                 pass
