@@ -8,27 +8,35 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
+from pyvirtualdisplay import Display  # 추가
 
 def create_driver():
     """Docker 환경에 최적화된 Chrome 드라이버 생성"""
+    
+    # Xvfb 가상 디스플레이 시작
+    display = Display(visible=0, size=(1920, 1080))
+    display.start()
+    
     options = uc.ChromeOptions()
     
+    # headless 모드 제거! (중요)
+    # options.add_argument('--headless=new')  # 이 줄 삭제
+    
     # Docker 환경 필수 옵션
-    options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-gpu')
     options.add_argument('--disable-setuid-sandbox')
     
-    # headless 감지 우회
+    # 감지 우회
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--start-maximized')
     options.add_argument('--window-size=1920,1080')
     
-    # User-Agent 설정 (2번 코드와 동일)
+    # User-Agent 설정
     options.add_argument('user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
     
-    # 언어 설정 (2번 코드와 동일)
+    # 언어 설정
     options.add_experimental_option('prefs', {
         'intl.accept_languages': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7'
     })
@@ -40,13 +48,14 @@ def create_driver():
     
     driver.set_page_load_timeout(30)
     
-    return driver
+    return driver, display  # display도 반환
 
 def scrape_timetable(url):
     """시간표 스크래핑 함수"""
     driver = None
+    display = None
     try:
-        driver = create_driver()
+        driver, display = create_driver() 
         
         # 2번 코드와 동일한 타이밍
         time.sleep(random.uniform(2, 4))
@@ -377,5 +386,10 @@ def scrape_timetable(url):
             try:
                 driver.quit()
                 print("브라우저 종료")
+            except:
+                pass
+        if display:
+            try:
+                display.stop()  # 가상 디스플레이 종료
             except:
                 pass
