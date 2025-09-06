@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional
 import asyncio
-from crawler import scrape_timetable
+from app.crawler import scrape_timetable
 import redis
 import json
 import hashlib

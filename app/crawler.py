@@ -2,14 +2,16 @@ import time
 import json
 import os
 from datetime import datetime
-import undetected_chromedriver as uc
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 def create_driver():
     """Docker 환경에 최적화된 Chrome 드라이버 생성"""
-    options = uc.ChromeOptions()
+    options = Options()
     
     # Docker 환경 필수 옵션
     options.add_argument('--headless=new')
@@ -30,7 +32,8 @@ def create_driver():
     
     options.add_argument('user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
     
-    driver = uc.Chrome(options=options, version_main=None)
+    service = Service()
+    driver = webdriver.Chrome(service=service, options=options)
     driver.set_page_load_timeout(30)
     
     return driver
