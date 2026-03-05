@@ -46,8 +46,21 @@ def create_driver():
     
     try:
         driver = uc.Chrome(options=options)
-    except:
-        driver = uc.Chrome(options=options, version_main=None)
+    except Exception:
+        # ChromeOptions 재사용 불가 → 새로 생성해서 재시도
+        options2 = ChromeOptions()
+        options2.add_argument('--no-sandbox')
+        options2.add_argument('--disable-dev-shm-usage')
+        options2.add_argument('--disable-gpu')
+        options2.add_argument('--disable-setuid-sandbox')
+        options2.add_argument('--disable-blink-features=AutomationControlled')
+        options2.add_argument('--start-maximized')
+        options2.add_argument('--window-size=1920,1080')
+        options2.add_argument('user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+        options2.add_experimental_option('prefs', {
+            'intl.accept_languages': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7'
+        })
+        driver = uc.Chrome(options=options2, version_main=None)
     
     driver.set_page_load_timeout(30)
     
