@@ -25,7 +25,7 @@ def create_driver():
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--lang=ko-KR')
 
-    driver = uc.Chrome(options=options)
+    driver = uc.Chrome(options=options, version_main=145)
     driver.set_page_load_timeout(30)
 
     return driver, display
