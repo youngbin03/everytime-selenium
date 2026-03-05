@@ -4,6 +4,7 @@ import os
 import random
 from datetime import datetime
 import undetected_chromedriver as uc
+from selenium.webdriver import ChromeOptions
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -17,7 +18,9 @@ def create_driver():
     display = Display(visible=0, size=(1920, 1080))
     display.start()
     
-    options = uc.ChromeOptions()
+    # undetected_chromedriver 전용 Options 대신
+    # 표준 Selenium ChromeOptions를 새로 생성해서 사용
+    options = ChromeOptions()
     
     # headless 모드 제거! (Xvfb 사용)
     # options.add_argument('--headless=new')
