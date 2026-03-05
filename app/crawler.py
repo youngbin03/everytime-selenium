@@ -4,7 +4,6 @@ import os
 import random
 from datetime import datetime
 import undetected_chromedriver as uc
-from selenium.webdriver import ChromeOptions
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -13,57 +12,22 @@ from pyvirtualdisplay import Display
 
 def create_driver():
     """Docker 환경에 최적화된 Chrome 드라이버 생성"""
-    
-    # Xvfb 가상 디스플레이 시작
+
     display = Display(visible=0, size=(1920, 1080))
     display.start()
-    
-    # undetected_chromedriver 전용 Options 대신
-    # 표준 Selenium ChromeOptions를 새로 생성해서 사용
-    options = ChromeOptions()
-    
-    # headless 모드 제거! (Xvfb 사용)
-    # options.add_argument('--headless=new')
-    
-    # Docker 환경 필수 옵션
+
+    options = uc.ChromeOptions()
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-gpu')
     options.add_argument('--disable-setuid-sandbox')
-    
-    # 감지 우회
     options.add_argument('--disable-blink-features=AutomationControlled')
-    options.add_argument('--start-maximized')
     options.add_argument('--window-size=1920,1080')
-    
-    # User-Agent 설정
-    options.add_argument('user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-    
-    # 언어 설정
-    options.add_experimental_option('prefs', {
-        'intl.accept_languages': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7'
-    })
-    
-    try:
-        driver = uc.Chrome(options=options)
-    except Exception:
-        # ChromeOptions 재사용 불가 → 새로 생성해서 재시도
-        options2 = ChromeOptions()
-        options2.add_argument('--no-sandbox')
-        options2.add_argument('--disable-dev-shm-usage')
-        options2.add_argument('--disable-gpu')
-        options2.add_argument('--disable-setuid-sandbox')
-        options2.add_argument('--disable-blink-features=AutomationControlled')
-        options2.add_argument('--start-maximized')
-        options2.add_argument('--window-size=1920,1080')
-        options2.add_argument('user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-        options2.add_experimental_option('prefs', {
-            'intl.accept_languages': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7'
-        })
-        driver = uc.Chrome(options=options2, version_main=None)
-    
+    options.add_argument('--lang=ko-KR')
+
+    driver = uc.Chrome(options=options)
     driver.set_page_load_timeout(30)
-    
+
     return driver, display
 
 def scrape_timetable(url):
